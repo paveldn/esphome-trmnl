@@ -1,5 +1,7 @@
 # ESPHome TRMNL component
 
+[![CI](https://github.com/paveldn/esphome-trmnl/actions/workflows/ci.yml/badge.svg)](https://github.com/paveldn/esphome-trmnl/actions/workflows/ci.yml)
+
 This external component lets an ESPHome device fetch screens from the
 [TRMNL](https://usetrmnl.com) BYOD API. It handles the protocol and leaves the
 hardware-specific work to ESPHome: `online_image` downloads the image, your
@@ -170,6 +172,10 @@ projects:
 The component tests are ready to copy into the ESPHome source tree and run with
 its test harness. Component documentation is submitted separately to the
 `esphome-docs` repository.
+
+GitHub Actions runs the same tests against the current ESPHome `dev` branch.
+Every supported architecture/framework combination is compiled in its own job,
+so a failure on one platform does not hide results from the others.
 
 In an ESPHome checkout, use the project's test and formatting commands:
 

@@ -1,0 +1,108 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  format:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install formatters
+        run: python -m pip install ruff==0.15.18 clang-format==13.0.1
+
+      - name: Check Python
+        run: |
+          ruff check components/trmnl
+          ruff format --check components/trmnl
+
+      - name: Check C++
+        run: clang-format --dry-run --Werror components/trmnl/trmnl.cpp components/trmnl/trmnl.h
+
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - esp32-ard
+          - esp32-c3-ard
+          - esp32-c3-idf
+          - esp32-idf
+          - esp8266-ard
+          - host
+          - rp2040-ard
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check out ESPHome development branch
+        run: git clone --depth 1 --branch dev https://github.com/esphome/esphome.git esphome-source
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: esphome-source/requirements.txt
+
+      - name: Restore ESPHome toolchains
+        uses: actions/cache@8b402f58fbc84540c8b491a91e594a4576fec3d7 # v5.0.2
+        with:
+          path: |
+            ~/.cache/esphome
+            ~/.platformio
+          key: esphome-${{ runner.os }}-${{ matrix.target }}-${{ hashFiles('esphome-source/requirements.txt') }}
+          restore-keys: |
+            esphome-${{ runner.os }}-${{ matrix.target }}-
+
+      - name: Install ESPHome dependencies
+        run: python -m pip install -r esphome-source/requirements.txt
+
+      - name: Add component to ESPHome checkout
+        run: |
+          mkdir -p esphome-source/esphome/components/trmnl
+          cp -R components/trmnl/. esphome-source/esphome/components/trmnl/
+          mkdir -p esphome-source/tests/components/trmnl
+          cp -R tests/components/trmnl/. esphome-source/tests/components/trmnl/
+
+      - name: Validate ${{ matrix.target }} configuration
+        working-directory: esphome-source
+        run: >-
+          python script/test_build_components.py
+          -e config
+          -c trmnl
+          -t ${{ matrix.target }}
+          --no-grouping
+          --fail-on-no-tests
+
+      - name: Compile ${{ matrix.target }} configuration
+        working-directory: esphome-source
+        run: >-
+          python script/test_build_components.py
+          -e compile
+          -c trmnl
+          -t ${{ matrix.target }}
+          --no-grouping
+          --fail-on-no-tests

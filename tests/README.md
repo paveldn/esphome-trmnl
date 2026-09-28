@@ -17,6 +17,9 @@ script/test_build_components -e config -c trmnl
 script/test_build_components -e compile -c trmnl
 ```
 
+The repository's `CI` workflow runs both commands for every target listed
+above against the current ESPHome `dev` branch.
+
 These files rely on the platform base configurations supplied by ESPHome's test
 runner. They are intended to be copied directly to `tests/components/trmnl`
 in the ESPHome source tree.
