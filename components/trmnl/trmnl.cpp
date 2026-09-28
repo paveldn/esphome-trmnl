@@ -70,9 +70,13 @@ void TrmnlComponent::dump_config() {
   if (this->width_ > 0 && this->height_ > 0) {
     ESP_LOGCONFIG(TAG, "  Reported size: %dx%d", this->width_, this->height_);
   }
+#ifdef USE_SENSOR
   ESP_LOGCONFIG(TAG, "  Battery voltage sensor: %s", YESNO(this->voltage_sensor_ != nullptr));
   ESP_LOGCONFIG(TAG, "  Battery level sensor: %s", YESNO(this->battery_level_sensor_ != nullptr));
+#endif
+#ifdef USE_BINARY_SENSOR
   ESP_LOGCONFIG(TAG, "  Charging binary sensor: %s", YESNO(this->charging_binary_sensor_ != nullptr));
+#endif
 }
 
 std::vector<http_request::Header> TrmnlComponent::build_headers_(bool for_setup) {
@@ -107,15 +111,19 @@ std::vector<http_request::Header> TrmnlComponent::build_headers_(bool for_setup)
     headers.push_back({"RSSI", std::to_string(wifi::global_wifi_component->wifi_rssi())});
   }
 #endif
+#ifdef USE_SENSOR
   if (this->voltage_sensor_ != nullptr && this->voltage_sensor_->has_state()) {
     headers.push_back({"Battery-Voltage", str_sprintf("%.2f", this->voltage_sensor_->get_state())});
   }
   if (this->battery_level_sensor_ != nullptr && this->battery_level_sensor_->has_state()) {
     headers.push_back({"Percent-Charged", str_sprintf("%.0f", this->battery_level_sensor_->get_state())});
   }
+#endif
+#ifdef USE_BINARY_SENSOR
   if (this->charging_binary_sensor_ != nullptr && this->charging_binary_sensor_->has_state()) {
     headers.push_back({"Battery-Charging", this->charging_binary_sensor_->state ? "1" : "0"});
   }
+#endif
   // Requests a TRMNL "special function" for this cycle -- see
   // trigger_special_function() and docs/trmnl.mdx. The official firmware
   // only ever sends this as a boolean flag, never a specific function name;

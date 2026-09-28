@@ -3,13 +3,19 @@
 #include <string>
 #include <vector>
 
-#include "esphome/components/binary_sensor/binary_sensor.h"
 #include "esphome/components/http_request/http_request.h"
-#include "esphome/components/sensor/sensor.h"
 #include "esphome/core/automation.h"
 #include "esphome/core/component.h"
+#include "esphome/core/defines.h"
 #include "esphome/core/helpers.h"
 #include "esphome/core/preferences.h"
+
+#ifdef USE_SENSOR
+#include "esphome/components/sensor/sensor.h"
+#endif
+#ifdef USE_BINARY_SENSOR
+#include "esphome/components/binary_sensor/binary_sensor.h"
+#endif
 
 namespace esphome::trmnl {
 
@@ -79,13 +85,17 @@ class TrmnlComponent final : public Component, public Parented<http_request::Htt
   /// self-registration -- persisted, so still valid after a reboot; empty if
   /// the device hasn't self-registered (e.g. `api_key` was set explicitly).
   const std::string &get_friendly_id() const { return this->friendly_id_; }
+#ifdef USE_SENSOR
   void set_voltage_sensor(sensor::Sensor *voltage_sensor) { this->voltage_sensor_ = voltage_sensor; }
   void set_battery_level_sensor(sensor::Sensor *battery_level_sensor) {
     this->battery_level_sensor_ = battery_level_sensor;
   }
+#endif
+#ifdef USE_BINARY_SENSOR
   void set_charging_binary_sensor(binary_sensor::BinarySensor *charging_binary_sensor) {
     this->charging_binary_sensor_ = charging_binary_sensor;
   }
+#endif
 
   /**
    * @brief Poll the TRMNL `/api/display` endpoint once.
@@ -155,9 +165,13 @@ class TrmnlComponent final : public Component, public Parented<http_request::Htt
 
   ESPPreferenceObject pref_;
 
+#ifdef USE_SENSOR
   sensor::Sensor *voltage_sensor_{nullptr};
   sensor::Sensor *battery_level_sensor_{nullptr};
+#endif
+#ifdef USE_BINARY_SENSOR
   binary_sensor::BinarySensor *charging_binary_sensor_{nullptr};
+#endif
 
   // (image_url, filename, refresh_rate, image_changed) -- image_url and
   // filename may be empty (e.g. a special function that only changes

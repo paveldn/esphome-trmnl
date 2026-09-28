@@ -10,6 +10,9 @@ architecture/framework combinations required by ESPHome:
 - RP2040 with Arduino
 - host, as an additional protocol smoke build
 
+The minimal host configuration also verifies that `sensor` and
+`binary_sensor` remain optional dependencies.
+
 Run the tests from an ESPHome checkout with:
 
 ```bash
