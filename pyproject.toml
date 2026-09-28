@@ -1,0 +1,23 @@
+[tool.ruff]
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+  "B",   # flake8-bugbear
+  "E",   # pycodestyle
+  "F",   # pyflakes
+  "I",   # isort
+  "UP",  # pyupgrade
+  "W",   # pycodestyle warnings
+]
+ignore = [
+  "E501", # line too long (formatter handles wrapping)
+]
+
+# This is a deliberately small subset of the rule set ESPHome's own
+# pyproject.toml enables (https://github.com/esphome/esphome/blob/dev/pyproject.toml).
+# Before opening a PR against esphome/esphome, re-lint components/trmnl/ against
+# their actual config rather than this one.
+
+[tool.black]
+target-version = ["py312"]

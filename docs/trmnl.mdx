@@ -1,0 +1,222 @@
+---
+description: "Use an ESPHome device with the TRMNL BYOD protocol."
+title: "TRMNL"
+---
+import APIRef from '@components/APIRef.astro';
+
+The `trmnl` component connects an ESPHome device to the
+[TRMNL](https://usetrmnl.com) BYOD API. It requests screen metadata from a
+TRMNL-compatible server and exposes the result to ESPHome automations.
+
+The component only handles the protocol. Use
+[`online_image`](/components/image/online_image/) to download the image, a
+[`display`](/components/display/) component to draw it, and
+[`deep_sleep`](/components/deep_sleep/) if the device should sleep between
+updates.
+
+```yaml
+# Example configuration
+http_request:
+
+trmnl:
+  id: trmnl_client
+  base_url: https://trmnl.com
+  api_key: !secret trmnl_api_key
+  width: 800
+  height: 480
+  on_image_available:
+    - if:
+        condition:
+          lambda: return !image_url.empty();
+        then:
+          - online_image.set_url:
+              id: trmnl_image
+              url: !lambda return image_url;
+  on_error:
+    - logger.log:
+        format: "TRMNL error: %s"
+        args: [error_type.c_str()]
+
+esphome:
+  on_boot:
+    priority: -100
+    then:
+      - trmnl.update: trmnl_client
+```
+
+## Configuration variables
+
+- **id** (*Optional*, [ID](/guides/configuration-types#id)): Manually specify
+  the component ID.
+- **http_request_id** (*Optional*, [ID](/guides/configuration-types#id)): The
+  [HTTP Request](/components/http_request/) instance to use. This is only
+  needed when the configuration contains more than one.
+- **base_url** (**Required**, URL): The server URL without `/api/display`.
+  Trailing slashes are removed automatically.
+- **api_key** (*Optional*, string): API key sent in the `Access-Token`
+  header. If omitted, the component registers through `/api/setup`.
+- **model** (*Optional*, string): Value of the `Model` header. Defaults to
+  `esphome`.
+- **width** (*Optional*, integer): Display width sent to the server.
+- **height** (*Optional*, integer): Display height sent to the server.
+- **voltage_sensor** (*Optional*, [ID](/guides/configuration-types#id)): Sensor
+  containing the battery voltage in volts.
+- **battery_level_sensor** (*Optional*,
+  [ID](/guides/configuration-types#id)): Sensor containing the battery charge
+  in percent.
+- **charging_binary_sensor** (*Optional*,
+  [ID](/guides/configuration-types#id)): Binary sensor that is on while the
+  battery is charging.
+- **on_image_available** (*Optional*, [Automation](/automations)): Runs after
+  a successful setup or display response.
+- **on_error** (*Optional*, [Automation](/automations)): Runs when setup or an
+  update fails.
+
+## Registration
+
+When `api_key` is omitted, the first `trmnl.update` calls `/api/setup`
+using the device MAC address. The returned API key and friendly ID are stored
+in flash. The friendly ID is printed in the device logs and is also available
+from a lambda:
+
+```yaml
+text_sensor:
+  - platform: template
+    name: "TRMNL Friendly ID"
+    lambda: return id(trmnl_client).get_friendly_id();
+    update_interval: 60s
+```
+
+A setup response may contain an image. It is delivered through
+`on_image_available`, and the first `/api/display` request is left for the
+next `trmnl.update`. This avoids starting two image downloads at once.
+
+## Automations
+
+### `on_image_available`
+
+This automation receives four variables:
+
+- `image_url` (`std::string`): URL returned by the server. It may be empty
+  for a response that only changes the refresh interval.
+- `filename` (`std::string`): Server-provided image name, when available.
+- `refresh_rate` (`uint32_t`): Suggested interval in seconds.
+- `image_changed` (`bool`): Whether the URL differs from the previous URL.
+
+`image_changed` is a convenience hint. It compares URLs, not image contents.
+Ignore it if the server serves changing content from a fixed URL.
+
+### `on_error`
+
+The `error_type` variable is one of:
+
+- `not_linked`: The device has not been linked or approved yet.
+- `network`: The request failed, returned a non-success HTTP status, timed
+  out, or could not be read.
+- `server_error`: The JSON response contains an application-level error
+  status.
+- `parse_error`: The response is invalid JSON or is missing required data.
+
+## Actions
+
+### `trmnl.update`
+
+Request one update from `/api/display`. The component has no polling interval,
+so this action must be called by an automation.
+
+```yaml
+on_...:
+  - trmnl.update: trmnl_client
+```
+
+The ID may be omitted when only one `trmnl` component is configured.
+
+### `trmnl.trigger_special_function`
+
+Add `special_function: true` to the next display request:
+
+```yaml
+on_...:
+  - trmnl.trigger_special_function: trmnl_client
+  - trmnl.update: trmnl_client
+```
+
+The TRMNL dashboard chooses the function; the protocol does not let the device
+request one by name. The flag is consumed by the next update, including a
+failed update.
+
+Identify, sleep, restart playlist, guest mode, and refresh are handled through
+the normal response. Rewind and send-to-me rely on the official firmware's
+local image cache, which this component does not implement. Add WiFi requires a
+device-side configuration portal and has no direct ESPHome equivalent.
+
+## Downloading and drawing the image
+
+`on_image_available` runs before `online_image` has downloaded anything.
+Update the display from `online_image.on_download_finished`:
+
+```yaml
+image:
+  - platform: online_image
+    id: trmnl_image
+    url: https://example.invalid/placeholder.bmp
+    format: BMP
+    type: BINARY
+    resize: 800x480
+    update_interval: never
+    on_download_finished:
+      - component.update: eink_display
+
+trmnl:
+  id: trmnl_client
+  base_url: https://trmnl.com
+  api_key: !secret trmnl_api_key
+  on_image_available:
+    - if:
+        condition:
+          lambda: return !image_url.empty() && image_changed;
+        then:
+          - online_image.set_url:
+              id: trmnl_image
+              url: !lambda return image_url;
+
+display:
+  - platform: waveshare_epaper
+    id: eink_display
+    # Configure the model and pins for your board.
+    update_interval: never
+    lambda: |-
+      it.image(0, 0, id(trmnl_image));
+```
+
+For a deep-sleeping device, call `deep_sleep.enter` after the image download
+and display update. Calling it directly from `on_image_available` can put the
+device to sleep before the asynchronous download completes. Also provide an
+`online_image.on_error` path so a failed download does not leave the device
+awake indefinitely.
+
+## Platform notes
+
+The protocol component supports ESP32 (Arduino and ESP-IDF), ESP8266, RP2040,
+and host through `http_request`. ESP8266 and RP2040 require
+`http_request: verify_ssl: false` for HTTPS.
+
+`online_image` supports ESP32, RP2040, and host. It does not support ESP8266,
+so ESP8266 can use the protocol callbacks but not the usual runtime image
+workflow.
+
+## Limitations
+
+- Response JSON is limited to 4 KiB.
+- Firmware update and reset fields in display responses are ignored.
+- Requests use the synchronous HTTP Request API and may block until its
+  configured timeout.
+
+## See Also
+
+- [HTTP Request](/components/http_request/)
+- [Online Image](/components/image/online_image/)
+- [Deep Sleep](/components/deep_sleep/)
+- [TRMNL BYOD documentation](https://docs.trmnl.com/go/diy/introduction)
+- [TRMNL special functions](https://help.trmnl.com/en/articles/9672080-special-functions)
+- <APIRef text="trmnl.h" path="trmnl/trmnl.h" />

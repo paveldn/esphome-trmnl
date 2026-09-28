@@ -1,0 +1,13 @@
+# ESPHome build artifacts
+.esphome/
+**/.esphome/
+*.pioenvs/
+*.piolibdeps/
+
+# Real secrets -- examples/secrets.yaml ships with placeholder values only;
+# if you point it at a real device, don't let git pick up your edits.
+secrets.yaml
+!examples/secrets.yaml
+
+__pycache__/
+*.pyc

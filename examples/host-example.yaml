@@ -1,0 +1,49 @@
+# Protocol-only smoke test for the `trmnl` external component.
+#
+# Builds as a native Linux binary (ESPHome's `host` platform) so the TRMNL
+# BYOD request/response handling can be exercised on a PC without any e-paper
+# hardware. No display is configured here -- only the download/JSON side of
+# the protocol is under test. Point `base_url` at either the real TRMNL API
+# or a small local mock server that returns the documented JSON shape.
+#
+# Run with:
+#   esphome run examples/host-example.yaml
+
+esphome:
+  name: trmnl-host-test
+
+host:
+
+logger:
+
+http_request:
+  id: http_request_component
+
+external_components:
+  - source:
+      type: local
+      path: ../components
+
+trmnl:
+  id: trmnl_client
+  http_request_id: http_request_component
+  base_url: "http://127.0.0.1:8080"  # e.g. a local mock BYOD server for testing
+  api_key: "test-key"
+  width: 800
+  height: 480
+  on_image_available:
+    - lambda: |-
+        ESP_LOGI("main", "Image available: %s (filename=%s, refresh_rate=%u, image_changed=%s)", image_url.c_str(),
+                 filename.c_str(), refresh_rate, YESNO(image_changed));
+  on_error:
+    # error_type: "not_linked" (expected for a new device), "network",
+    # "server_error", or "parse_error" -- see docs/trmnl.mdx.
+    - lambda: |-
+        ESP_LOGW("main", "TRMNL error: %s", error_type.c_str());
+
+# Poll once a minute for this smoke test; a real device would instead call
+# `trmnl.update` once right before entering deep sleep (see esp32-example.yaml).
+interval:
+  - interval: 60s
+    then:
+      - trmnl.update:

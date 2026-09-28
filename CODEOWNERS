@@ -1,0 +1,6 @@
+# Mirrors the syntax of ESPHome's own top-level CODEOWNERS file
+# (https://github.com/esphome/esphome/blob/dev/CODEOWNERS), using the path
+# this component would have once merged into esphome/esphome. Locally, the
+# same code lives at components/trmnl/ (see README.md for why).
+
+esphome/components/trmnl/* @paveldn

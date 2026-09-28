@@ -1,0 +1,129 @@
+# Full end-to-end example: a battery-powered ESP32 e-paper device that polls
+# TRMNL once per wake cycle, draws the result, then sleeps for the
+# server-provided refresh_rate.
+#
+# This is a *pattern*, not a specific board's pinout -- replace the `display:`
+# platform/pins and the ADC voltage divider with whatever your hardware uses.
+# Everything TRMNL-specific lives in the `trmnl:` block below; the rest is
+# plain ESPHome (display, sensor, deep_sleep) wired together with automations.
+
+esphome:
+  name: trmnl-display
+  on_boot:
+    priority: -100  # after WiFi/network components have started
+    then:
+      - trmnl.update:
+
+esp32:
+  board: esp32dev
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+logger:
+
+http_request:
+  id: http_request_component
+
+external_components:
+  - source:
+      type: local
+      path: ../components
+
+# --- Battery: a normal ESPHome sensor, not owned by this component ---------
+sensor:
+  - platform: adc
+    pin: GPIO35
+    id: battery_voltage
+    attenuation: 12db
+    update_interval: 60s
+    filters:
+      - multiply: 2.0  # adjust to match your voltage divider
+
+# --- The downloaded image: decoded entirely by ESPHome's own online_image --
+# online_image downloads asynchronously. The display update and deep sleep
+# therefore happen from its completion callback, not from
+# trmnl.on_image_available.
+image:
+  - id: trmnl_image
+    platform: online_image
+    url: "https://example.invalid/placeholder.bmp"  # overwritten at runtime
+    format: BMP
+    type: BINARY
+    resize: 800x480
+    update_interval: never
+    on_download_finished:
+      - component.update: trmnl_display
+      - script.execute: enter_trmnl_sleep
+    on_error:
+      - logger.log: "TRMNL: image download failed"
+      - script.execute: enter_trmnl_sleep
+
+globals:
+  - id: trmnl_sleep_duration_ms
+    type: uint32_t
+    restore_value: false
+    initial_value: "900000"
+
+script:
+  - id: enter_trmnl_sleep
+    then:
+      - deep_sleep.enter:
+          sleep_duration: !lambda 'return id(trmnl_sleep_duration_ms);'
+
+# --- TRMNL protocol -----------------------------------------------------
+trmnl:
+  id: trmnl_client
+  http_request_id: http_request_component
+  base_url: "https://trmnl.your-server.example"  # or the official https://trmnl.com
+  api_key: !secret trmnl_api_key
+  width: 800
+  height: 480
+  voltage_sensor: battery_voltage
+  on_image_available:
+    - lambda: |-
+        id(trmnl_sleep_duration_ms) = refresh_rate > 0 ? refresh_rate * 1000 : 900000;
+    # image_changed compares the new image_url against the last one we saw --
+    # a hint, not a guarantee (see docs/trmnl.mdx), but skipping a redundant
+    # download+decode+e-paper-refresh when the server confirms nothing changed
+    # is a meaningful battery saving on every wake cycle.
+    - if:
+        condition:
+          lambda: 'return image_changed;'
+        then:
+          - online_image.set_url:
+              id: trmnl_image
+              url: !lambda 'return image_url;'
+        else:
+          - logger.log: "TRMNL: image unchanged, skipping re-download"
+          - script.execute: enter_trmnl_sleep
+  on_error:
+    # error_type: "not_linked" (expected for a new device), "network",
+    # "server_error", or "parse_error" -- see docs/trmnl.mdx. Sleep with a
+    # fixed fallback duration and try again next wake, regardless of which.
+    - lambda: |-
+        ESP_LOGW("main", "TRMNL error: %s", error_type.c_str());
+    - deep_sleep.enter:
+        sleep_duration: 15min
+
+spi:
+  clk_pin: GPIO18
+  mosi_pin: GPIO23
+
+display:
+  - platform: waveshare_epaper
+    id: trmnl_display
+    model: 7.50inv2
+    cs_pin: GPIO5
+    dc_pin: GPIO17
+    busy_pin: GPIO4
+    reset_pin: GPIO16
+    update_interval: never  # only ever redrawn by online_image's on_download_finished above
+    lambda: |-
+      it.image(0, 0, id(trmnl_image));
+
+deep_sleep:
+  id: deep_sleep_component
+  run_duration: 30s  # safety fallback if no callback completes
+  sleep_duration: 15min  # fallback only; overridden by trmnl's on_image_available/on_error above

@@ -1,0 +1,6 @@
+substitutions:
+  verify_ssl: "true"
+
+network:
+
+<<: !include component.yaml

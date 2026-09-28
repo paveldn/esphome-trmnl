@@ -1,0 +1,45 @@
+esphome:
+  on_boot:
+    then:
+      - trmnl.update:
+      - trmnl.update: trmnl_client
+      - trmnl.trigger_special_function:
+      - trmnl.trigger_special_function: trmnl_client
+
+http_request:
+  verify_ssl: ${verify_ssl}
+
+sensor:
+  - platform: template
+    id: trmnl_test_voltage
+    lambda: |-
+      return 3.98;
+    update_interval: 60s
+  - platform: template
+    id: trmnl_test_battery_level
+    lambda: |-
+      return 75.0;
+    update_interval: 60s
+
+binary_sensor:
+  - platform: template
+    id: trmnl_test_charging
+    lambda: |-
+      return true;
+
+trmnl:
+  id: trmnl_client
+  base_url: "http://127.0.0.1:8080"
+  api_key: "test-key"
+  width: 800
+  height: 480
+  voltage_sensor: trmnl_test_voltage
+  battery_level_sensor: trmnl_test_battery_level
+  charging_binary_sensor: trmnl_test_charging
+  on_image_available:
+    - lambda: |-
+        ESP_LOGD("trmnl_test", "image_url=%s filename=%s refresh_rate=%u image_changed=%s", image_url.c_str(),
+                 filename.c_str(), refresh_rate, YESNO(image_changed));
+  on_error:
+    - lambda: |-
+        ESP_LOGW("trmnl_test", "error_type=%s", error_type.c_str());
